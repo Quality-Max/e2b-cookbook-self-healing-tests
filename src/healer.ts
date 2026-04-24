@@ -36,7 +36,7 @@ const DEFAULT_MAX_ATTEMPTS = Number.parseInt(
 const SYSTEM_RULES = `You are an expert Playwright test author.
 Output a single TypeScript file -- no markdown fences, no commentary.
 The file must use @playwright/test and import { test, expect }.
-On failure, before throwing, write the current page HTML to /home/user/failure.html
+On failure, before throwing, write the current page HTML to /app/failure.html
 using fs.writeFileSync so a follow-up agent can inspect the page state.`;
 
 function buildGeneratePrompt(spec: TestSpec): string {
