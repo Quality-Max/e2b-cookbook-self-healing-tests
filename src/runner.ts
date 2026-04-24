@@ -9,7 +9,7 @@
  * this example installs from scratch on every run.
  */
 
-import { Sandbox } from '@e2b/code-interpreter';
+import { CommandExitError, Sandbox } from '@e2b/code-interpreter';
 
 import type { GeneratedTest, RunResult } from './types.js';
 
@@ -86,18 +86,18 @@ export async function runInSandbox(
     // E2B's SDK throws CommandExitError on non-zero exit rather than
     // returning a result. For a test runner that's the wrong default --
     // a failed test IS the signal we want to capture and feed into the
-    // healing loop. Catch the throw, read .result off the error, and
-    // return a structured failure so the caller can heal.
-    let exec: { exitCode?: number; stdout?: string; stderr?: string };
+    // healing loop. Catch the typed error and use it directly, since
+    // CommandExitError implements CommandResult (exitCode/stdout/stderr
+    // are getters on the instance itself).
+    let exec: { exitCode: number; stdout: string; stderr: string };
     try {
       exec = await sandbox.commands.run(
         'cd /home/user && npx playwright test --reporter=list 2>&1',
         { timeoutMs: 5 * 60 * 1000 },
       );
     } catch (err) {
-      const result = (err as { result?: typeof exec }).result;
-      if (!result) throw err;
-      exec = result;
+      if (!(err instanceof CommandExitError)) throw err;
+      exec = err;
     }
 
     const passed = exec.exitCode === 0;
@@ -105,9 +105,9 @@ export async function runInSandbox(
 
     return {
       passed,
-      exitCode: exec.exitCode ?? -1,
-      stdout: exec.stdout ?? '',
-      stderr: exec.stderr ?? '',
+      exitCode: exec.exitCode,
+      stdout: exec.stdout,
+      stderr: exec.stderr,
       failureSnapshot,
     };
   } finally {

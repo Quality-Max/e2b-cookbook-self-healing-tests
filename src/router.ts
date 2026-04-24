@@ -90,7 +90,7 @@ export interface RouteCallResult {
  */
 function stripCodeFences(text: string): string {
   const trimmed = text.trim();
-  const match = trimmed.match(/^```[^\n]*\n([\s\S]*?)\n```$/);
+  const match = trimmed.match(/^```[^\n]*\n([\s\S]*?)\n?```$/);
   return match ? match[1]! : trimmed;
 }
 
