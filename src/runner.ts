@@ -35,14 +35,22 @@ export default defineConfig({
 }
 
 /**
- * Install dependencies once per sandbox. The Chromium download is the
- * slow step (~30s); a custom E2B template would skip this.
+ * Install dependencies once per sandbox.
+ *
+ * `--with-deps` runs apt-get for Chromium's shared libraries (libnspr4,
+ * libnss3, libatk, ...). E2B's default `base` template is stripped
+ * down, so without this the headless binary fails with
+ * "libnspr4.so: cannot open shared object file" when it tries to launch.
+ *
+ * The whole install is the slow step (~60-90s) -- a production deployment
+ * should build a custom E2B template with Playwright + Chromium + deps
+ * pre-baked to skip this cost.
  */
 async function installPlaywright(sandbox: Sandbox): Promise<void> {
   await sandbox.commands.run(
     'cd /home/user && npm init -y >/dev/null && ' +
       'npm install --silent @playwright/test && ' +
-      'npx --yes playwright install chromium',
+      'npx --yes playwright install --with-deps chromium',
     { timeoutMs: 5 * 60 * 1000 },
   );
 }
@@ -75,10 +83,22 @@ export async function runInSandbox(
     await prepareSandbox(sandbox, generated.code);
     await installPlaywright(sandbox);
 
-    const exec = await sandbox.commands.run(
-      'cd /home/user && npx playwright test --reporter=list 2>&1',
-      { timeoutMs: 5 * 60 * 1000 },
-    );
+    // E2B's SDK throws CommandExitError on non-zero exit rather than
+    // returning a result. For a test runner that's the wrong default --
+    // a failed test IS the signal we want to capture and feed into the
+    // healing loop. Catch the throw, read .result off the error, and
+    // return a structured failure so the caller can heal.
+    let exec: { exitCode?: number; stdout?: string; stderr?: string };
+    try {
+      exec = await sandbox.commands.run(
+        'cd /home/user && npx playwright test --reporter=list 2>&1',
+        { timeoutMs: 5 * 60 * 1000 },
+      );
+    } catch (err) {
+      const result = (err as { result?: typeof exec }).result;
+      if (!result) throw err;
+      exec = result;
+    }
 
     const passed = exec.exitCode === 0;
     const failureSnapshot = passed ? undefined : await tryReadSnapshot(sandbox);
