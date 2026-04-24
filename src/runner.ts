@@ -9,7 +9,7 @@
  * this example installs from scratch on every run.
  */
 
-import { Sandbox } from '@e2b/code-interpreter';
+import { CommandExitError, Sandbox } from '@e2b/code-interpreter';
 
 import type { GeneratedTest, RunResult } from './types.js';
 
@@ -35,14 +35,22 @@ export default defineConfig({
 }
 
 /**
- * Install dependencies once per sandbox. The Chromium download is the
- * slow step (~30s); a custom E2B template would skip this.
+ * Install dependencies once per sandbox.
+ *
+ * `--with-deps` runs apt-get for Chromium's shared libraries (libnspr4,
+ * libnss3, libatk, ...). E2B's default `base` template is stripped
+ * down, so without this the headless binary fails with
+ * "libnspr4.so: cannot open shared object file" when it tries to launch.
+ *
+ * The whole install is the slow step (~60-90s) -- a production deployment
+ * should build a custom E2B template with Playwright + Chromium + deps
+ * pre-baked to skip this cost.
  */
 async function installPlaywright(sandbox: Sandbox): Promise<void> {
   await sandbox.commands.run(
     'cd /home/user && npm init -y >/dev/null && ' +
       'npm install --silent @playwright/test && ' +
-      'npx --yes playwright install chromium',
+      'npx --yes playwright install --with-deps chromium',
     { timeoutMs: 5 * 60 * 1000 },
   );
 }
@@ -75,19 +83,31 @@ export async function runInSandbox(
     await prepareSandbox(sandbox, generated.code);
     await installPlaywright(sandbox);
 
-    const exec = await sandbox.commands.run(
-      'cd /home/user && npx playwright test --reporter=list 2>&1',
-      { timeoutMs: 5 * 60 * 1000 },
-    );
+    // E2B's SDK throws CommandExitError on non-zero exit rather than
+    // returning a result. For a test runner that's the wrong default --
+    // a failed test IS the signal we want to capture and feed into the
+    // healing loop. Catch the typed error and use it directly, since
+    // CommandExitError implements CommandResult (exitCode/stdout/stderr
+    // are getters on the instance itself).
+    let exec: { exitCode: number; stdout: string; stderr: string };
+    try {
+      exec = await sandbox.commands.run(
+        'cd /home/user && npx playwright test --reporter=list 2>&1',
+        { timeoutMs: 5 * 60 * 1000 },
+      );
+    } catch (err) {
+      if (!(err instanceof CommandExitError)) throw err;
+      exec = err;
+    }
 
     const passed = exec.exitCode === 0;
     const failureSnapshot = passed ? undefined : await tryReadSnapshot(sandbox);
 
     return {
       passed,
-      exitCode: exec.exitCode ?? -1,
-      stdout: exec.stdout ?? '',
-      stderr: exec.stderr ?? '',
+      exitCode: exec.exitCode,
+      stdout: exec.stdout,
+      stderr: exec.stderr,
       failureSnapshot,
     };
   } finally {

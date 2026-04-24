@@ -77,6 +77,24 @@ export interface RouteCallResult {
 }
 
 /**
+ * Strip a single outer markdown fence if present.
+ *
+ * LLMs occasionally wrap their response in ```lang ... ``` despite
+ * prompts that explicitly forbid it (Gemini is the usual offender).
+ * Since every caller in this cookbook expects raw TypeScript that can
+ * be written straight to a .ts file, we normalise at the router.
+ *
+ * Surgical by design: only strips when the trimmed text starts AND
+ * ends with a fence, so response bodies that legitimately contain
+ * inline fences are left alone.
+ */
+function stripCodeFences(text: string): string {
+  const trimmed = text.trim();
+  const match = trimmed.match(/^```[^\n]*\n([\s\S]*?)\n?```$/);
+  return match ? match[1]! : trimmed;
+}
+
+/**
  * Try the configured providers in order until one returns a response.
  *
  * The error classification here is intentionally conservative -- on any
@@ -99,7 +117,7 @@ export async function route(
         temperature: 0.2,
       });
       return {
-        text,
+        text: stripCodeFences(text),
         provider,
         usage: {
           promptTokens: usage?.promptTokens,
