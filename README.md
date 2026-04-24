@@ -35,7 +35,7 @@ This repo wires the two together.
          │ generated Playwright TS
          ▼
   ┌──────────────┐  fresh sandbox per attempt
-  │   runner.ts  │  installs Playwright + Chromium, runs test
+  │   runner.ts  │  runs test in E2B playwright-chromium sandbox
   └──────┬───────┘
          │ pass / fail + stdout / stderr / page snapshot
          ▼
@@ -68,7 +68,9 @@ You need:
 - **An [E2B](https://e2b.dev) API key** (free tier is enough for these examples).
 - **At least one** of: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`. The router silently drops providers without keys, so a partial setup still works.
 
-**Expect some waiting.** Cold sandbox start is fast (~200 ms), but each run installs Playwright + Chromium + system deps (`libnspr4`, `libnss3`, …) fresh, which takes **~90–120 s**. A full healing demo with 2–3 attempts runs in **3–6 min** wall clock. For repeat use, build a custom E2B template with everything pre-baked to drop back to the 200 ms floor.
+Sandbox cold start on the `playwright-chromium` template is fast (~200 ms) — Chromium + browser deps come pre-baked. The only per-run install cost is `@playwright/test` (~5–10 s). Per attempt: **~30–80 s** wall clock, mostly LLM latency + test run. This is a rough estimate anchored on one measured 3-attempt healing run at ~50 s/attempt; real variance comes from sandbox cold-start jitter, network to the target site, and model response time. Full healing demo (2–3 attempts): **~2–4 min** total.
+
+For CI use where you want the `@playwright/test` install cost gone too, build your own E2B template with it pre-baked on top of `playwright-chromium` — drops each attempt back toward the 200 ms floor.
 
 ---
 
@@ -155,10 +157,10 @@ The pattern in this repo is the floor, not the ceiling.
 
 ## Troubleshooting
 
-If you see any of these, you're probably on a commit before [#1](https://github.com/Quality-Max/e2b-cookbook-self-healing-tests/pull/1) — pull `main`.
+If you see any of these, you're probably on a commit before recent fixes ([#1](https://github.com/Quality-Max/e2b-cookbook-self-healing-tests/pull/1), [#4](https://github.com/Quality-Max/e2b-cookbook-self-healing-tests/pull/4)) — pull `main`.
 
 - **`Error: No tests found`, test file starts with ``` ```typescript ```** — LLM wrapped its output in markdown fences despite the prompt saying not to (Gemini does this occasionally). `router.ts` strips outer fences before returning.
-- **`error while loading shared libraries: libnspr4.so`** — E2B's default `base` template lacks Chromium's system libraries. `runner.ts` runs `playwright install --with-deps chromium` to install them via apt-get.
+- **`error while loading shared libraries: libnspr4.so`** — E2B's default `base` template lacks Chromium's system libraries. The cookbook now uses E2B's pre-baked `playwright-chromium` template via `Sandbox.create('playwright-chromium')`, which ships Chromium + browser deps ready to use (see [#4](https://github.com/Quality-Max/e2b-cookbook-self-healing-tests/pull/4)).
 - **`CommandExitError: exit status 1` propagating past `runHealingTest`** — the E2B SDK throws on non-zero exit rather than returning a result. `runner.ts` catches the typed `CommandExitError` so a failing test becomes a `RunResult` the healer can read, instead of unwinding the stack.
 
 If the router keeps landing on the same provider, check that the others' keys are both *set* and *valid* — the router silently drops providers with missing keys and silently moves past providers that throw (including on auth errors). Dump `failures` from `AllProvidersFailedError` if all of them fail in a row.
