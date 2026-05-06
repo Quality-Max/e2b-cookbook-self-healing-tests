@@ -1,5 +1,7 @@
 # Self-Healing Browser Tests with E2B + Vercel AI SDK
 
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-yellow?logo=buymeacoffee)](https://buymeacoffee.com/qualitymax)
+
 Generate Playwright tests from natural-language specs, run them inside isolated [E2B](https://e2b.dev) sandboxes, and have the LLM heal them automatically when they fail. Multi-model fallback (Claude → GPT → Gemini) so a single-provider outage doesn't take the suite down.
 
 This is a QualityMax-contributed demo of what falls out when you combine E2B sandboxes, the Vercel AI SDK, and a fail → snapshot → retry loop. The pattern is inspired by the self-healing behaviour used in production at [qualitymax.io](https://qualitymax.io), but the code here is standalone TypeScript — it shares the *concept*, not the implementation.
